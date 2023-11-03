@@ -4,34 +4,30 @@
 #include <list>
 #include <iterator>
 #include <fstream>
+#include <thread>
+#include <algorithm>
 
-#ifdef COMMON_STATIC_BULK
-    cBulk staticBulk(BulkTypeSize::STATIC_SIZE);
-#endif
+ //---------------------------------------------------------------------------
 
-//---------------------------------------------------------------------------
+ void cBulk::Subscribe(Observer *obs) {
+    m_subs.insert(obs);
+ }
+ //---------------------------------------------------------------------------
 
-void cBulk::DisplayAndSave(){
-    if( !cmds.empty() ){
-        // вывод в консоль
-        std::cout << "bulk: ";
-        std::copy(cmds.begin(), --cmds.end(), std::ostream_iterator<std::string>(std::cout, ", "));
-        std::cout << cmds.back() << "\n";
+ void cBulk::Notify(){
+     if( !cmds.empty() ){
+         for (auto sub : m_subs)
+         {
+             sub->update( std::chrono::system_clock::now(), cmds);
+         }
 
-        // открываем файл для сохранения
-        std::string fileName = "bulk" + std::to_string( std::chrono::system_clock::to_time_t(start)) + "_" + std::to_string(std::rand()) + ".log";
-        std::ofstream out(fileName);
-        while(!cmds.empty()) {
-            out << cmds.front() << "\n";
-            cmds.pop_front();
-        }
-        out.close();
-    }
-}
-//---------------------------------------------------------------------------
+         cmds.clear();
+     }
+ }
+ //---------------------------------------------------------------------------
 
 void cBulk::Complete( ){
-    DisplayAndSave();
+    Notify();
 }
 //---------------------------------------------------------------------------
 
@@ -43,24 +39,24 @@ void cBulk::Add( std::string cmd, int maxSize ){
     cmds.push_back(cmd);
 
     if( (type == BulkTypeSize::STATIC_SIZE && cmds.size() >= maxSize)) {
-        DisplayAndSave();
+        Notify();
     }
 }
 //---------------------------------------------------------------------------
 
 void DataProcessor::Process(){  //
     if (cmd == "{") {
-        if( activeBulk->type == BulkTypeSize::STATIC_SIZE  ){
+        if( activeBulk->GetType() == BulkTypeSize::STATIC_SIZE  ){
             activeBulk->Complete();
-            activeBulk = &dynamicBulk;
+            activeBulk = dynamicBulk;
         }
         depth++;
     }
     else if (cmd == "}") {
-        if( activeBulk->type != BulkTypeSize::STATIC_SIZE  ){
+        if( activeBulk->GetType() != BulkTypeSize::STATIC_SIZE  ){
             if (--depth == 0) {
                 activeBulk->Complete();
-                activeBulk = &staticBulk;
+                activeBulk = staticBulk;
             }
         }
     }

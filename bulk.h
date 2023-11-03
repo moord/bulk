@@ -3,7 +3,11 @@
 
 #include <chrono>
 #include <deque>
+#include <memory>
+#include <set>
 #include <string>
+
+#include "logger.h"
 
 enum BulkTypeSize { STATIC_SIZE = 0, DYNAMIC_SIZE = 1 };
 
@@ -13,19 +17,24 @@ enum BulkTypeSize { STATIC_SIZE = 0, DYNAMIC_SIZE = 1 };
 
 class cBulk{
 private:
-    std::chrono::time_point<std::chrono::system_clock>  start; // время получения 1 команды
+    BulkTypeSize type;
+
+    std::chrono::time_point<std::chrono::system_clock> start; // время получения 1 команды
     std::deque<std::string> cmds;                              // очередь команд
 
     // ..
 
-    void DisplayAndSave(); // вывести очередь команд в консоль и сохранить в файл
+    void Notify(); // вывести очередь команд в консоль и сохранить в файл
+    std::set<Observer *> m_subs;
 public:
     cBulk( BulkTypeSize AType): type(AType){};
 
     void Add( std::string cmd, int maxSize = 0 ); // добавить команду в очередь команд
     void Complete();                              // завершить
 
-    BulkTypeSize type;
+    void Subscribe(Observer *obs);
+
+    BulkTypeSize GetType(){ return type; }
 };
 
 //////////////////////////////////////////////////////////////
@@ -34,11 +43,9 @@ public:
 
 class DataProcessor{
 private:
-    cBulk dynamicBulk{BulkTypeSize::DYNAMIC_SIZE};
-#ifndef COMMON_STATIC_BULK
-    cBulk staticBulk{BulkTypeSize::STATIC_SIZE};
-#endif
-    cBulk *activeBulk;
+    std::shared_ptr<cBulk> dynamicBulk,
+                           staticBulk,
+                           activeBulk;
 
     int depth;
     int N;
@@ -50,18 +57,20 @@ private:
     void Process();                             // обработка команды
 public:
 
-    DataProcessor(int AN ):N(AN), depth(0){
-        activeBulk = &staticBulk;
+    DataProcessor(int AN , std::shared_ptr<cBulk> ADynamicBulk, std::shared_ptr<cBulk> AStaticBulk):N(AN), depth(0){
+        dynamicBulk = ADynamicBulk;
+        activeBulk = staticBulk = AStaticBulk;
     };
 
     ~DataProcessor(){
-        if( activeBulk->type == BulkTypeSize::STATIC_SIZE  ){
+        if( activeBulk->GetType() == BulkTypeSize::STATIC_SIZE  ){
             activeBulk->Complete();
         }
     };
 
     void Get( const char *, std::size_t);       // принять и обработать буфер команд
     void Get( std::string & );                  // принять и обработать одиночную команду
+
 };
 
 #endif // BULK_H
